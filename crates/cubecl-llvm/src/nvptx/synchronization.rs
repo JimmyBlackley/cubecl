@@ -28,3 +28,22 @@ pub fn lower_sync_plane(scope: &Scope) {
 pub fn lower_sync_cube(scope: &Scope) {
     barrier(scope, BARRIER_CTA, BARRIER_ID);
 }
+
+fn fence(scope: &Scope, ordering: AtomicOrderingAttr) {
+    let fence = llvm::FenceOp::new(
+        scope.ctx_mut(),
+        ordering,
+        SyncScopeAttr::NamedScope("device".into()),
+    );
+    scope.register(&fence);
+}
+
+/// A cube barrier fenced at the device's scope, CUDA's `__threadfence(); __syncthreads();`: the
+/// barrier orders memory within the cube only. The fence ahead of it publishes each unit's writes
+/// to every cube and orders an earlier load of what another cube published ahead of the barrier;
+/// the one after it keeps each unit's later reads from being served out of a copy cached before.
+pub fn lower_sync_storage(scope: &Scope) {
+    fence(scope, AtomicOrderingAttr::AcqRel);
+    barrier(scope, BARRIER_CTA, BARRIER_ID);
+    fence(scope, AtomicOrderingAttr::Acquire);
+}

@@ -33,3 +33,13 @@ pub fn lower_sync_cube(scope: &Scope) {
     barrier(scope, S_BARRIER);
     fence(scope, "workgroup", AtomicOrderingAttr::Acquire);
 }
+
+/// A workgroup barrier fenced at the agent's scope: the fence ahead of it publishes each unit's
+/// writes to every cube and orders an earlier load of what another cube published ahead of the
+/// barrier; the acquire after it invalidates the caches a later read would otherwise be served
+/// a stale copy from.
+pub fn lower_sync_storage(scope: &Scope) {
+    fence(scope, "agent", AtomicOrderingAttr::AcqRel);
+    barrier(scope, S_BARRIER);
+    fence(scope, "agent", AtomicOrderingAttr::Acquire);
+}
