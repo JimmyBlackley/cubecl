@@ -28,10 +28,14 @@ impl ToSpirvDialectOp for SyncOp {
         let semantics = match scope {
             SyncScope::Plane => MemorySemantics::ACQUIRE_RELEASE | MemorySemantics::SUBGROUP_MEMORY,
             SyncScope::Cube => MemorySemantics::ACQUIRE_RELEASE | MemorySemantics::WORKGROUP_MEMORY,
+            // Under the Vulkan memory model a barrier orders, but only availability and visibility
+            // operations carry one workgroup's plain writes to another at device scope.
             SyncScope::Device => {
                 MemorySemantics::ACQUIRE_RELEASE
                     | MemorySemantics::UNIFORM_MEMORY
                     | MemorySemantics::WORKGROUP_MEMORY
+                    | MemorySemantics::MAKE_AVAILABLE
+                    | MemorySemantics::MAKE_VISIBLE
             }
             SyncScope::Unit => unreachable!(),
         };
