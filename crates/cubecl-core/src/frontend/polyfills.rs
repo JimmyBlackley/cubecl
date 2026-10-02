@@ -219,7 +219,9 @@ pub fn log1p<T: Float, N: Size>(input: Vector<T, N>) -> Vector<T, N> {
 
     // x - x^2/2 + x^3/3 - x^4/4
     let series = input - x2 / two + x3 / three - x4 / four;
-    let small = input.abs().less_than(&Vector::new(T::new(0.125_f32)));
+    // 2^-5: the degree-4 truncation error is below an ulp here, and `ln(1 + x)` is already
+    // accurate above it, so the two branches never both lose to the naive form.
+    let small = input.abs().less_than(&Vector::new(T::new(0.03125_f32)));
 
     select_many(small, series, (input + Vector::one()).ln())
 }
