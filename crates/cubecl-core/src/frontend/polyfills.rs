@@ -203,9 +203,37 @@ pub fn expand_dp4a_polyfill(scope: &Scope, a: Value, b: Value, c: Value) -> Valu
     dp4a_polyfill::expand::<SizeA>(scope, a.into(), b.into(), c.into()).value(scope)
 }
 
+/// Numerically stable `ln(1 + x)`.
+///
+/// The naive `(1 + x).ln()` loses all relative precision for small `|x|`: `1 + x` rounds to `1`
+/// and the result rounds to `0`. For small magnitudes a truncated Taylor series about `0` is used
+/// instead, which only depends on `x` itself.
 #[cube]
 pub fn log1p<T: Float, N: Size>(input: Vector<T, N>) -> Vector<T, N> {
-    (input + Vector::one()).ln()
+    let x2 = input * input;
+    let x3 = x2 * input;
+    let x4 = x2 * x2;
+    let two = Vector::new(T::new(2.0_f32));
+    let three = Vector::new(T::new(3.0_f32));
+    let four = Vector::new(T::new(4.0_f32));
+
+    // x - x^2/2 + x^3/3 - x^4/4
+    let series = input - x2 / two + x3 / three - x4 / four;
+    let small = input.abs().less_than(&Vector::new(T::new(0.125_f32)));
+
+    select_many(small, series, (input + Vector::one()).ln())
+}
+
+/// Numerically stable `ln(1 + exp(x))`.
+///
+/// Uses `max(x, 0) + ln(1 + exp(-|x|))`, which never overflows and stays accurate for large
+/// negative `x` because the `ln(1 + small)` term is evaluated through [`log1p`].
+#[cube]
+pub fn softplus<T: Float, N: Size>(input: Vector<T, N>) -> Vector<T, N> {
+    let zero = Vector::new(T::new(0.0_f32));
+    let positive = input.max(zero);
+    let neg_abs = zero - input.abs();
+    positive + log1p(neg_abs.exp())
 }
 
 #[cube]

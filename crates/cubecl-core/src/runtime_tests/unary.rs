@@ -957,6 +957,89 @@ pub fn test_expm1_f32<R: Runtime>(client: Client) {
     }
 }
 
+pub fn test_log1p_f32<R: Runtime>(client: Client) {
+    #[cube(launch_unchecked)]
+    fn test_function<In: Size, Out: Size>(
+        input: &[Vector<f32, In>],
+        output: &mut [Vector<f32, Out>],
+    ) {
+        if ABSOLUTE_POS < input.len() {
+            output[ABSOLUTE_POS] = Vector::cast_from(input[ABSOLUTE_POS].log1p());
+        }
+    }
+
+    let input = &[0.0f32, 1.0e-7, -1.0e-7, 1.0e-4, -1.0e-4, 0.5, -0.5, 10.0];
+    let expected: [f32; 8] = core::array::from_fn(|i| (input[i] as f64).ln_1p() as f32);
+
+    for &(input_vectorization, out_vectorization) in &[(1usize, 1usize), (2, 2), (4, 4)] {
+        let output_handle = client.empty(input.len() * core::mem::size_of::<f32>());
+        let input_handle = client.create_from_slice(f32::as_bytes(input));
+
+        unsafe {
+            test_function::launch_unchecked(
+                &client,
+                CubeCount::Static(1, 1, 1),
+                CubeDim::new_1d((input.len() / input_vectorization) as u32),
+                input_vectorization,
+                out_vectorization,
+                BufferArg::from_raw_parts(input_handle, input.len()),
+                BufferArg::from_raw_parts(output_handle.clone(), expected.len()),
+            )
+        };
+
+        let actual = client.read_one_unchecked(output_handle);
+        let actual = f32::from_bytes(&actual);
+
+        for (a, e) in actual.iter().zip(expected.iter()) {
+            assert_f32_ulp_le(*a, *e, 8);
+        }
+    }
+}
+
+pub fn test_softplus_f32<R: Runtime>(client: Client) {
+    use crate::frontend::polyfills;
+
+    #[cube(launch_unchecked)]
+    fn test_function<In: Size, Out: Size>(
+        input: &[Vector<f32, In>],
+        output: &mut [Vector<f32, Out>],
+    ) {
+        if ABSOLUTE_POS < input.len() {
+            output[ABSOLUTE_POS] = Vector::cast_from(polyfills::softplus(input[ABSOLUTE_POS]));
+        }
+    }
+
+    let input = &[-20.0f32, -1.0, 0.0, 1.0, 20.0, 1.0e-6];
+    let expected: [f32; 6] = core::array::from_fn(|i| {
+        let x = input[i] as f64;
+        (x.max(0.0) + (-x.abs()).exp().ln_1p()) as f32
+    });
+
+    for &(input_vectorization, out_vectorization) in &[(1usize, 1usize), (2, 2)] {
+        let output_handle = client.empty(input.len() * core::mem::size_of::<f32>());
+        let input_handle = client.create_from_slice(f32::as_bytes(input));
+
+        unsafe {
+            test_function::launch_unchecked(
+                &client,
+                CubeCount::Static(1, 1, 1),
+                CubeDim::new_1d((input.len() / input_vectorization) as u32),
+                input_vectorization,
+                out_vectorization,
+                BufferArg::from_raw_parts(input_handle, input.len()),
+                BufferArg::from_raw_parts(output_handle.clone(), expected.len()),
+            )
+        };
+
+        let actual = client.read_one_unchecked(output_handle);
+        let actual = f32::from_bytes(&actual);
+
+        for (a, e) in actual.iter().zip(expected.iter()) {
+            assert_f32_ulp_le(*a, *e, 8);
+        }
+    }
+}
+
 test_unary_impl_int_fixed!(test_count_ones, I, u32, Vector::count_ones, [
     {
         input_vectorization: 1,
@@ -1112,6 +1195,18 @@ macro_rules! testgen_unary {
             fn test_expm1_f32() {
                 let client = TestRuntime::client(&Default::default());
                 cubecl_core::runtime_tests::unary::test_expm1_f32::<TestRuntime>(client);
+            }
+
+            #[$crate::runtime_tests::test_log::test]
+            fn test_log1p_f32() {
+                let client = TestRuntime::client(&Default::default());
+                cubecl_core::runtime_tests::unary::test_log1p_f32::<TestRuntime>(client);
+            }
+
+            #[$crate::runtime_tests::test_log::test]
+            fn test_softplus_f32() {
+                let client = TestRuntime::client(&Default::default());
+                cubecl_core::runtime_tests::unary::test_softplus_f32::<TestRuntime>(client);
             }
         }
     };
